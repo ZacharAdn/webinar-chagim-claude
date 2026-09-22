@@ -1,0 +1,21 @@
+[dataset]
+raw = "data/customers.csv"
+id_column = "customer_id"
+target_column = "churn"
+positive_label = "Yes"
+
+[project]
+name = "webinar-chagim-claude"
+region = "eu-central-1"
+github_visibility = "public"    # Streamlit's GitHub grant sees public repos only
+
+[bands]
+high   = { min = 0.60, action = "Contact this week and make a concrete offer" }
+medium = { min = 0.35, action = "Add to next month's outreach list" }
+low    = { min = 0.00, action = "No action" }
+
+[model]
+estimator = "logreg"       # the rung-2 gate rewrites this
+seed = 42
+test_size = 0.2
+categorical_int_max_unique = 10
