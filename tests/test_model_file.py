@@ -7,6 +7,7 @@ scores the same customer the same way after every reboot.
 
 import dataclasses
 import sys
+import tomllib
 from pathlib import Path
 
 import pandas as pd
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module")
 def frame():
-    return pd.read_csv(ROOT / "data" / "webina-sep.csv")
+    return pd.read_csv(ROOT / "data" / f"{tomllib.load((ROOT / 'ladder.toml').open('rb'))['project']['name']}.csv")
 
 
 @pytest.fixture(scope="module")

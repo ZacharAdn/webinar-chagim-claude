@@ -40,7 +40,11 @@ LOCKED_NOTE = (
 
 def _secret(name: str, section: str | None = None) -> str:
     try:
-        block = st.secrets[section] if section else st.secrets
+        block = st.secrets
+        # "connections.supabase" is a nested table in secrets.toml, not a key
+        # with a dot in it; st.secrets["connections.supabase"] finds nothing.
+        for part in (section.split(".") if section else []):
+            block = block[part]
         return str(block.get(name, "") or "")
     except Exception:  # noqa: BLE001 - no secrets file, or no such section
         return ""

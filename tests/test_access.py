@@ -108,3 +108,23 @@ def test_no_secrets_at_all_stays_locked(monkeypatch):
     monkeypatch.delenv("EDITOR_KEY", raising=False)
     assert access._expected_key() == ""
     assert access.is_editor() is False
+
+
+def test_secret_reads_a_nested_section(monkeypatch):
+    # secrets.toml's [connections.supabase] is nested; the derived key was dead
+    # for a whole webinar cycle because every test above stubbed _secret.
+    fake = {"connections": {"supabase": {"SUPABASE_KEY": "sb_publishable_abc"}}}
+    monkeypatch.setattr(access.st, "secrets", fake, raising=False)
+    assert access._secret("SUPABASE_KEY", "connections.supabase") == "sb_publishable_abc"
+
+
+def test_derived_key_matches_what_supabase_setup_stores():
+    import hashlib
+    import subprocess
+
+    shell = subprocess.run(
+        ["bash", "-c", "printf '%s' 'demo|publish-gate|sb_x' | shasum -a 256 | cut -c1-16"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert access.derive_key("demo", "sb_x") == shell
+    assert shell == hashlib.sha256(b"demo|publish-gate|sb_x").hexdigest()[:16]

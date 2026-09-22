@@ -455,7 +455,7 @@ def rung_recommend(df: pd.DataFrame, spec: model_mod.Spec) -> None:
 
     st.divider()
     rules_chat_panel(conn, rules_set, feedback, record, str(record[spec.id_column]))
-    feedback_form(conn, record, rules, rules_set, spec)
+    feedback_form(conn, record, rules, rules_set, spec, df)
 
     if default is not None:
         with st.expander("Try another customer from the table"):
@@ -482,14 +482,24 @@ def rung_recommend(df: pd.DataFrame, spec: model_mod.Spec) -> None:
 # --------------------------------------------------------------------------
 # The loop -- a verdict on the recommendation, and the agent that learns from it
 # --------------------------------------------------------------------------
-def outcome_labels(spec) -> dict[str, str]:
+def outcome_labels(spec, df: pd.DataFrame | None = None) -> dict[str, str]:
     """The three answers to "what actually happened", in the target's own words.
 
     The stored codes stay `stayed` / `left` (the event did not / did happen) so
     the learner and the database never change; only what the form shows does.
     """
-    event = f"{spec.target} = {spec.positive_label}"
-    return {"unknown": "don't know yet", "stayed": f"not {event}", "left": event}
+    negative = f"not {spec.positive_label}"
+    if df is not None:
+        others = [
+            str(v) for v in df[spec.target].dropna().astype(str).str.strip().unique()
+            if str(v) != spec.positive_label
+        ]
+        negative = others[0] if len(others) == 1 else negative
+    return {
+        "unknown": "don't know yet",
+        "stayed": f"{spec.target} = {negative}",
+        "left": f"{spec.target} = {spec.positive_label}",
+    }
 
 
 def rules_chat_panel(conn, rules_set, feedback: list[dict], record: dict,
@@ -597,8 +607,10 @@ def rules_chat_panel(conn, rules_set, feedback: list[dict], record: dict,
         st.rerun()
 
 
-def feedback_form(conn, record: dict, rules, rules_set, spec) -> None:
+def feedback_form(conn, record: dict, rules, rules_set, spec,
+                  df: pd.DataFrame | None = None) -> None:
     """One verdict per recommendation. This is the input the whole loop runs on."""
+    labels = outcome_labels(spec, df)
     st.markdown("##### Was this the right call? Tell the system.")
     record_id = str(record[spec.id_column])
     logged = data_mod.latest_prediction_for(conn, record_id)
@@ -606,8 +618,8 @@ def feedback_form(conn, record: dict, rules, rules_set, spec) -> None:
         c1, c2 = st.columns(2)
         verdict = c1.radio("The recommendation was", ["right", "wrong"], horizontal=True)
         outcome = c2.radio(
-            "What actually happened", list(outcome_labels(spec)), horizontal=True,
-            format_func=outcome_labels(spec).get,
+            "What actually happened", list(labels), horizontal=True,
+            format_func=labels.get,
         )
         with st.expander("I have a better action"):
             better = st.text_input(

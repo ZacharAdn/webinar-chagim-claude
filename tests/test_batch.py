@@ -1,6 +1,7 @@
 """The scoring job is a function the ladder runs, not a button on the screen."""
 
 import sys
+import tomllib
 from pathlib import Path
 
 import pandas as pd
@@ -20,7 +21,7 @@ def test_score_and_write_puts_the_riskiest_rows_first_and_stamps_both_versions(
     tmp_path, monkeypatch,
 ):
     monkeypatch.setattr(data_mod, "LOCAL_PREDICTIONS", tmp_path / "predictions.csv")
-    df = pd.read_csv(ROOT / "data" / "webina-sep.csv")
+    df = pd.read_csv(ROOT / "data" / f"{tomllib.load((ROOT / 'ladder.toml').open('rb'))['project']['name']}.csv")
     spec = model_mod.Spec.from_toml(ROOT)
     trained = model_mod.load_model(model_mod.model_path(ROOT, spec.estimator))
     rules = rules_store.from_toml(ROOT)
