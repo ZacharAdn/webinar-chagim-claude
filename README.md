@@ -35,7 +35,7 @@ python ladder.py all --from verify
 | `ladder.py` | The runner: eight steps, fixed order |
 | `src/` | The app and its four modules |
 | `scripts/ladder/` | The steps themselves |
-| `data/webinar-chagim-claude.csv` | Prepared data — the Supabase seed and the offline fallback |
+| `data/customers.prepared.csv` | Prepared data — the Supabase seed and the offline fallback |
 | `supabase/schema.sql` | Generated from the prepared columns |
 | `tests/test_ladder.py` | The checks REPORT.md is built from |
 

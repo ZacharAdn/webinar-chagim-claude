@@ -18,13 +18,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import data as data_mod  # noqa: E402
 import model as model_mod  # noqa: E402
 
 
 @pytest.fixture(scope="module")
 def frame() -> pd.DataFrame:
     spec = model_mod.Spec.from_toml(ROOT)
-    path = ROOT / "data" / f"{ROOT.name}.csv"
+    path = data_mod.local_csv()
     if not path.exists():
         pytest.skip(f"{path} is missing -- run: python ladder.py prepare")
     return pd.read_csv(path), spec

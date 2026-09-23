@@ -35,7 +35,7 @@ def live_and_local():
     load = data_mod.load_records()
     if load.source != "supabase":
         pytest.skip(f"loader fell back to {load.source}: {load.detail}")
-    local = pd.read_csv(ROOT / "data" / f"{data_mod.project_name()}.csv")
+    local = pd.read_csv(data_mod.local_csv())
     return load.df, local, data_mod
 
 
@@ -54,10 +54,11 @@ def test_model_metrics_do_not_depend_on_row_order():
     train_test_split splits by position -- so without this, the app and
     REPORT.md quote different recall for the same model on the same data.
     """
+    import data as data_mod
     import model as model_mod
 
     spec = model_mod.Spec.from_toml(ROOT)
-    frame = pd.read_csv(ROOT / "data" / f"{ROOT.name}.csv")
+    frame = pd.read_csv(data_mod.local_csv())
     shuffled = frame.sample(frac=1.0, random_state=7).reset_index(drop=True)
 
     first = model_mod.train_model(frame, spec).metrics

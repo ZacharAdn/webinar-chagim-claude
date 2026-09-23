@@ -38,7 +38,10 @@ def project_name() -> str:
 
 
 def local_csv() -> Path:
-    return REPO_ROOT / "data" / f"{project_name()}.csv"
+    """The prepared copy prepare wrote: <raw stem>.prepared.csv next to the raw file."""
+    with (REPO_ROOT / "ladder.toml").open("rb") as fh:
+        raw = REPO_ROOT / tomllib.load(fh)["dataset"]["raw"]
+    return raw.with_name(f"{raw.stem}.prepared.csv")
 
 
 def id_column() -> str:

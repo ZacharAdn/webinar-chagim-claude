@@ -14,6 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def prepared_path(raw: Path) -> Path:
+    return raw.with_name(f"{raw.stem}.prepared.csv")
+
+
 class LadderError(Exception):
     """A step failure. Printed as one line by the CLI, never as a traceback."""
 
@@ -90,7 +94,10 @@ class LadderConfig:
 
     @property
     def prepared_csv(self) -> Path:
-        return self.root / "data" / f"{self.name}.csv"
+        """The cleaned copy, next to the raw file and named after it:
+        data/customers.csv -> data/customers.prepared.csv. Naming it after the
+        project made it look, on screen, as if the data had been renamed."""
+        return prepared_path(self.raw_csv)
 
     @property
     def results_dir(self) -> Path:

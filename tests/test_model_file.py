@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module")
 def frame():
-    return pd.read_csv(ROOT / "data" / f"{tomllib.load((ROOT / 'ladder.toml').open('rb'))['project']['name']}.csv")
+    return pd.read_csv(_prepared())
 
 
 @pytest.fixture(scope="module")
@@ -57,3 +57,8 @@ def test_load_model_returns_none_when_there_is_no_file(tmp_path):
 
 def test_model_path_lives_under_models_by_estimator():
     assert model_mod.model_path(ROOT, "tree") == ROOT / "models" / "tree.joblib"
+
+
+def _prepared():
+    raw = ROOT / tomllib.load((ROOT / "ladder.toml").open("rb"))["dataset"]["raw"]
+    return raw.with_name(f"{raw.stem}.prepared.csv")
