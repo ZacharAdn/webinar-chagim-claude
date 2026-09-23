@@ -59,8 +59,8 @@ def opening_message(rules: RuleSet, record: dict,
         f"Rules v{rules.version}, highest floor first:\n{describe_bands(rules)}\n\n"
         f"This customer is at {probability:.0%}, which lands in '{band.name}' "
         f"-> {band.action}.\n\n"
-        "Ask me why, or tell me what you would rather see happen, and I will "
-        "propose a change to the bands. Nothing changes until you apply it."
+        "Ask me why, or ask for a change and I will draft it. I cannot change "
+        "anything myself: a draft goes live only when you press Apply below."
     )
 
 
@@ -80,7 +80,12 @@ def system_prompt(rules: RuleSet, digest_rows: list[dict], record: dict) -> str:
         '{"bands": [{"name": ..., "min": ..., "action": ...}, ...], '
         '"rationale": "..."} keeping the same band names, floors between 0 and 1 '
         "with the lowest at 0. If no change is justified, say so and do not emit "
-        "a block. Never invent feedback that is not listed above."
+        "a block. Never invent feedback that is not listed above. You cannot change "
+        "the rules yourself: a proposal takes effect only when a person presses "
+        "'Apply' under this chat. If asked to 'do it' or 'change it', say that in one "
+        "sentence and point to the button; do not repeat the proposal. A question "
+        "like 'can I...?' gets an answer, not a block, unless the person asks for "
+        "the change."
     )
 
 

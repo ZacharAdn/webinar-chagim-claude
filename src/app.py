@@ -546,7 +546,8 @@ def rules_chat_panel(conn, rules_set, feedback: list[dict], record: dict,
         )
         return
 
-    prompt = st.chat_input("Ask about the rules, or say what should change")
+    _chat_proposal(conn, rules_set)
+    prompt = st.chat_input("Ask about the rules, or ask for a change")
     if prompt:
         allowed, reason = access.chat_allowed()
         if not allowed:
@@ -578,6 +579,11 @@ def rules_chat_panel(conn, rules_set, feedback: list[dict], record: dict,
                 }
         st.rerun()
 
+
+def _chat_proposal(conn, rules_set) -> None:
+    """The console's pending proposal, drawn right under the conversation and
+    above the input box -- below it, people kept typing 'ok, change it' at a
+    model that cannot change anything (23.9.2026)."""
     proposal = st.session_state.get("chat_proposal")
     if not proposal or proposal["version"] != rules_set.version:
         return
@@ -616,6 +622,8 @@ def rules_chat_panel(conn, rules_set, feedback: list[dict], record: dict,
             "comes from it."
         )
         st.rerun()
+
+
 
 
 def feedback_form(conn, record: dict, rules, rules_set, spec,
