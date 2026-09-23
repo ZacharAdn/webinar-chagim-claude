@@ -695,11 +695,11 @@ def _band_progress(conn, rules_set, row: dict) -> None:
 
 def learner_panel(conn, rules_set, feedback: list[dict]) -> None:
     """Agent 2: reads the verdicts, proposes a revision, publishes it on request."""
+    st.caption(learner_mod.thresholds().rule_text())
     if not feedback:
         st.caption("No verdicts yet. Send one on rung 3 and the learner has something to read.")
         return
 
-    st.caption(learner_mod.thresholds().rule_text())
     prefer_llm = learner_mod.llm_available()
     writer = ("the rule-based learner, with gpt-oss-120b as a second opinion when "
               "the rules find nothing") if prefer_llm else "the rule-based learner"
