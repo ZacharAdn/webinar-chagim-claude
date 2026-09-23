@@ -1,4 +1,8 @@
-"""Step 2 -- train, compare against the baseline, and show the leak."""
+"""Step 2 -- train both model families, compare them, and show the leak.
+
+The majority-class baseline is still computed and kept in the result data, but
+it is no longer on the report line or the screen (23.9.2026).
+"""
 
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ def run(cfg: LadderConfig) -> dict:
     # Both families go to disk: the app compares them on rung 2, and a file
     # is what makes "the same customer scores the same after a reboot" true.
     saved = {}
+    families = {}
     for estimator in model_mod.ESTIMATORS:
         family = trained if estimator == spec.estimator else model_mod.train_model(
             df, dataclasses.replace(spec, estimator=estimator)
@@ -30,13 +35,15 @@ def run(cfg: LadderConfig) -> dict:
         path = model_mod.save_model(family, model_mod.model_path(cfg.root, estimator))
         saved[estimator] = {"path": str(path.relative_to(cfg.root)),
                             "version": family.version}
+        families[estimator] = family.metrics
 
+    other = {e: m for e, m in families.items() if e != spec.estimator}
     line = (
-        f"baseline {trained.baseline.accuracy:.1%} acc / "
-        f"{trained.baseline.recall:.0%} recall · "
-        f"model {trained.metrics.accuracy:.1%} / {trained.metrics.recall:.1%} / "
+        f"{spec.estimator} {trained.metrics.accuracy:.1%} / {trained.metrics.recall:.1%} / "
         f"AUC {trained.metrics.roc_auc:.2f} · "
-        f"leak {leaky.recall:.1%} vs {honest.recall:.1%} · "
+        + "".join(f"{e} {m.accuracy:.1%} / {m.recall:.1%} / AUC {m.roc_auc:.2f} · "
+                  for e, m in other.items())
+        + f"leak {leaky.recall:.1%} vs {honest.recall:.1%} · "
         f"saved {saved[spec.estimator]['path']} ({trained.version})"
     )
     return write_result(
@@ -47,6 +54,7 @@ def run(cfg: LadderConfig) -> dict:
         {
             "baseline": trained.baseline.as_row(),
             "model": trained.metrics.as_row(),
+            "families": {e: m.as_row() for e, m in families.items()},
             "leaky": leaky.as_row(),
             "honest": honest.as_row(),
             "numeric": trained.numeric,

@@ -1,7 +1,7 @@
 """The four rungs, one app.
 
 Rung 1  describe   -- the dashboard, reading records out of Supabase
-Rung 2  predict    -- a model, its baseline, and the leakage story
+Rung 2  predict    -- two model families side by side, and the leakage story
 Rung 3  recommend  -- versioned bands, gpt-oss-120b as the second opinion, and
                       the loop: a verdict on each recommendation, and a second
                       agent that rewrites the bands from those verdicts
@@ -278,15 +278,18 @@ def rung_describe(df: pd.DataFrame, spec: model_mod.Spec) -> None:
 def rung_predict(df: pd.DataFrame, spec: model_mod.Spec) -> None:
     st.subheader(SUBHEADS[1])
 
-    trained = get_model(df, spec)
+    # Two model families side by side, the chosen one first. The majority-class
+    # baseline is still computed (model.py, REPORT data) but not shown: on stage
+    # it opened a recall discussion the talk does not have room for (23.9.2026).
+    families = [spec.estimator] + [e for e in model_mod.ESTIMATORS if e != spec.estimator]
     st.dataframe(
-        pd.DataFrame([trained.baseline.as_row(), trained.metrics.as_row()]),
+        pd.DataFrame([get_model_for(df, spec, e).metrics.as_row() for e in families]),
         width="stretch", hide_index=True,
     )
     st.caption(
-        f"The baseline earns {trained.baseline.accuracy:.0%} accuracy without catching "
-        f"a single '{spec.positive_label}'. The model finds {trained.metrics.recall:.0%} "
-        f"of them at ROC-AUC {trained.metrics.roc_auc:.2f}."
+        f"Same data, same split, two kinds of model. "
+        f"{model_mod.ESTIMATORS.get(spec.estimator, spec.estimator)} is the one the "
+        "rest of the app uses."
     )
     with st.expander("Why the number can lie -- the leakage demo"):
         honest, leaky = get_leakage(df, spec)
