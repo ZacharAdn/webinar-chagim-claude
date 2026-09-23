@@ -688,8 +688,9 @@ def _band_progress(conn, rules_set, row: dict) -> None:
         )
     if row.get("verdict") == "wrong" and not row.get("better_action"):
         st.caption(
-            "No better action was named, so the learner cannot change what this band "
-            "recommends -- it can only move a floor. Say what should have been done."
+            "No better action was named, so the learner will borrow the neighbouring "
+            "band's action (stronger if they left, softer if they stayed). Naming one "
+            "is more precise."
         )
 
 

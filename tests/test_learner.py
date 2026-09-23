@@ -3,7 +3,7 @@
 The learner has to be trustworthy with no key and no network, because that is
 the state it will be in the moment a demo needs it. So every path through
 propose_rules is pinned here: it moves an action when people said which one was
-better, it raises a floor when 'high risk' customers kept staying, and it
+better, it borrows the neighbouring band's action when nobody named one, and it
 leaves alone what the evidence does not touch.
 """
 
@@ -70,18 +70,23 @@ def test_rules_learner_adopts_the_action_people_kept_suggesting(rules):
     assert got.source == "learner:rules"
 
 
-def test_rules_learner_raises_a_floor_when_high_risk_customers_kept_staying(rules):
+def test_rules_learner_softens_a_band_whose_customers_kept_staying(rules):
     rows = [fb(0.65, "wrong", "stayed") for _ in range(4)]
-    got = learner.propose_rules(rules, rows)
-    high = next(b for b in got.bands if b.name == "high")
-    assert high.min == pytest.approx(0.65)
-    assert high.action == rules.band_for(0.65).action
+    proposal = learner.propose_rules(rules, rows)
+    high = next(b for b in proposal.bands if b.name == "high")
+    assert high.min == pytest.approx(0.60)          # floors never move here
+    assert high.action == rules.band_for(0.45).action  # borrowed from 'medium'
+    assert proposal.changes == [
+        "high: action 'Contact this week and make a concrete offer' -> "
+        "'Add to next month's outreach list'"
+    ]
 
 
-def test_rules_learner_never_touches_the_zero_floor(rules):
+def test_rules_learner_has_nothing_softer_for_the_bottom_band(rules):
     rows = [fb(0.05, "wrong", "stayed") for _ in range(5)]
-    got = learner.propose_rules(rules, rows)
-    assert got.bands[-1].min == 0.0
+    proposal = learner.propose_rules(rules, rows)
+    assert proposal.bands == rules.bands
+    assert "no neighbouring band" in proposal.rationale
 
 
 def test_proposal_diff_names_every_change(rules):
@@ -105,17 +110,19 @@ def test_propose_falls_back_to_rules_when_llm_is_absent(rules, monkeypatch):
     assert got.source == "learner:rules"
 
 
-def test_three_who_left_after_a_soft_call_lower_the_floor_of_the_band_above(rules):
-    """The mirror of the floor-rises rule: medium customers kept leaving, so
-    the high band must start lower and catch them."""
+def test_three_who_left_after_a_soft_call_get_the_stronger_action(rules):
+    """Medium customers kept leaving after the soft call and nobody named a
+    better action, so the band borrows 'high''s action. Visible on the same
+    customer, which a moved floor was not."""
     feedback = [fb(0.577, "wrong", "left") for _ in range(3)]
     proposal = learner.propose_rules(rules, feedback)
     floors = {b.name: b.min for b in proposal.bands}
-    assert proposal.changed
-    assert floors["high"] == pytest.approx(0.55)
-    assert floors["medium"] == pytest.approx(0.35)
+    assert floors == {b.name: b.min for b in rules.bands}
     assert "left" in proposal.rationale
-    assert proposal.changes == ["high: floor 60% -> 55%"]
+    assert proposal.changes == [
+        "medium: action 'Add to next month's outreach list' -> "
+        "'Contact this week and make a concrete offer'"
+    ]
 
 
 def test_propose_prefers_a_rule_that_moved_over_a_model_that_shrugged(rules, monkeypatch):
@@ -125,7 +132,10 @@ def test_propose_prefers_a_rule_that_moved_over_a_model_that_shrugged(rules, mon
     unchanged = learner.Proposal(rules, rules.bands, "no evidence", "learner:groq", {}, [])
     monkeypatch.setattr(learner, "propose_llm", lambda *a, **k: unchanged)
     proposal = learner.propose(rules, feedback, prefer_llm=True)
-    assert proposal.changes == ["high: floor 60% -> 55%"]
+    assert proposal.changes == [
+        "medium: action 'Add to next month's outreach list' -> "
+        "'Contact this week and make a concrete offer'"
+    ]
     assert proposal.source == "learner:rules"
 
 

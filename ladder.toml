@@ -17,7 +17,6 @@ low    = { min = 0.00, action = "No action" }
 [learner]
 min_verdicts = 3      # a band changes only once this many verdicts on it say wrong
 wrong_share = 0.5     # ...and at least this share of its verdicts say so
-floor_step = 0.05     # how far a floor moves when no better action was named
 
 [model]
 estimator = "logreg"       # the rung-2 gate rewrites this

@@ -10,9 +10,12 @@ Two learners, same contract, so the loop never depends on a key:
 
   propose_rules   deterministic. Counts the verdicts per band. A band whose
                   recommendation was called wrong often enough gets the action
-                  people said would have been better; a band whose 'high risk'
-                  customers mostly stayed gets a higher floor. Ten rows are
-                  enough. This is the one that runs when Groq is not there.
+                  people said would have been better. When nobody named one,
+                  the outcome decides: they left, so the band takes the stronger
+                  action of the band above; they stayed, so it takes the softer
+                  action of the band below. Floors never move here -- a moved
+                  floor is invisible to the customer on the screen (23.9.2026).
+                  This is the one that runs when Groq is not there.
   propose_llm     gpt-oss-120b on Groq reads the same digest and writes the
                   revision as JSON with a rationale. Validated by the same
                   normalise() before it is allowed anywhere near the recommender.
@@ -38,7 +41,6 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 MIN_VERDICTS_TO_ACT = 3       # fewer than this and a band is left alone
 WRONG_SHARE_TO_ACT = 0.5      # half the verdicts on a band say wrong -> act
-FLOOR_STEP = 0.05             # how much a floor moves when a band over-fires
 
 
 @dataclass(frozen=True)
@@ -49,7 +51,6 @@ class Thresholds:
 
     min_verdicts: int = MIN_VERDICTS_TO_ACT
     wrong_share: float = WRONG_SHARE_TO_ACT
-    floor_step: float = FLOOR_STEP
 
     def rule_text(self) -> str:
         """One sentence the screen shows next to the button, so the threshold
@@ -57,8 +58,9 @@ class Thresholds:
         return (
             f"A band changes only once at least {self.min_verdicts} verdicts on it "
             f"say 'wrong' (at least {self.wrong_share:.0%} of its verdicts). With a "
-            "better action named, the band's action becomes that; without one, a "
-            f"floor moves by {self.floor_step:.0%}."
+            "better action named, the band's action becomes that. Without one: they "
+            "left, so the band takes the stronger action of the band above; they "
+            "stayed, so it takes the softer action of the band below."
         )
 
 
@@ -71,7 +73,6 @@ def thresholds(root: Path | None = None) -> Thresholds:
     return Thresholds(
         int(raw.get("min_verdicts", MIN_VERDICTS_TO_ACT)),
         float(raw.get("wrong_share", WRONG_SHARE_TO_ACT)),
-        float(raw.get("floor_step", FLOOR_STEP)),
     )
 
 
@@ -179,21 +180,23 @@ def propose_rules(rules: RuleSet, feedback: list[dict]) -> Proposal:
                 f"{band.name}: {d.wrong} of {d.total} verdicts said wrong and "
                 f"{top[0][1]} of them suggested '{actions[band.name]}'."
             )
-        elif band.min > 0 and d.stayed > d.left:
-            floors[band.name] = min(round(band.min + t.floor_step, 4), 0.95)
-            notes.append(
-                f"{band.name}: {d.stayed} of {d.total} customers stayed after a "
-                f"'{band.action}' call, so the floor rises to {floors[band.name]:.0%}."
-            )
-        elif position > 0 and d.left > d.stayed:
-            # The mirror rule: they left after the softer call, so the band
-            # above has to start lower and catch the next ones.
+        elif d.left > d.stayed and position > 0:
+            # They left after this call: too soft. Take the next band's action.
             above = rules.bands[position - 1]
-            floors[above.name] = max(round(above.min - t.floor_step, 4), band.min + t.floor_step)
+            actions[band.name] = above.action
             notes.append(
-                f"{band.name}: {d.left} of {d.total} customers left after a "
-                f"'{band.action}' call, so '{above.name}' now starts at "
-                f"{floors[above.name]:.0%} and catches them."
+                f"{band.name}: {d.left} of {d.total} customers left after "
+                f"'{band.action}', so it now gets '{above.name}''s action: "
+                f"'{above.action}'."
+            )
+        elif d.stayed > d.left and position < len(rules.bands) - 1:
+            # They stayed anyway: too much. Take the softer action below.
+            below = rules.bands[position + 1]
+            actions[band.name] = below.action
+            notes.append(
+                f"{band.name}: {d.stayed} of {d.total} customers stayed after "
+                f"'{band.action}', so it now gets '{below.name}''s action: "
+                f"'{below.action}'."
             )
     revised = [Band(b.name, floors[b.name], actions[b.name]) for b in rules.bands]
     bands = normalise([b.__dict__ for b in revised])
@@ -204,7 +207,8 @@ def propose_rules(rules: RuleSet, feedback: list[dict]) -> Proposal:
         f"{t.min_verdicts} verdicts with {t.wrong_share:.0%} or more wrong."
         if not crossed else
         f"{total} verdicts read; {crossed} band(s) crossed the threshold but the "
-        "verdicts point nowhere: no better action, and stayed and left in balance."
+        "verdicts point nowhere: no better action, and either stayed and left are "
+        "in balance or there is no neighbouring band to borrow an action from."
     )
     return Proposal(
         rules, bands, rationale, "learner:rules",
