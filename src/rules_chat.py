@@ -87,7 +87,7 @@ def system_prompt(rules: RuleSet, digest_rows: list[dict], record: dict) -> str:
 def extract_bands(text: str, current: RuleSet | None = None
                   ) -> tuple[tuple[Band, ...] | None, str]:
     """The last fenced json block in the reply, validated. (None, '') otherwise."""
-    blocks = BLOCK.findall(text)
+    blocks = BLOCK.findall(text) or _bare_json(text)
     if not blocks:
         return None, ""
     try:
@@ -100,8 +100,20 @@ def extract_bands(text: str, current: RuleSet | None = None
     return bands, str(payload.get("rationale", "")).strip()
 
 
+def _bare_json(text: str) -> list[str]:
+    """The model sometimes answers with the JSON alone, no fence (23.9.2026 on the
+    live app: raw JSON on screen and no Apply button). Take the outermost object
+    that carries "bands"."""
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start or '"bands"' not in text[start:end + 1]:
+        return []
+    return [text[start:end + 1]]
+
+
 def strip_block(text: str) -> str:
-    return BLOCK.sub("", text).strip()
+    stripped = BLOCK.sub("", text).strip()
+    bare = _bare_json(stripped)
+    return stripped.replace(bare[0], "").strip() if bare else stripped
 
 
 def reply(history: list[dict], system: str, current: RuleSet | None = None,
@@ -128,4 +140,8 @@ def reply(history: list[dict], system: str, current: RuleSet | None = None,
     if not text:
         return ChatTurn("", error="the model returned an empty reply")
     bands, rationale = extract_bands(text, current)
-    return ChatTurn(strip_block(text), bands, rationale)
+    shown = strip_block(text)
+    if bands is not None and not shown:
+        # JSON only: say it in words, so the screen never shows raw JSON.
+        shown = rationale or "Here is the change I propose."
+    return ChatTurn(shown, bands, rationale)

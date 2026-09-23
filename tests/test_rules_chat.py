@@ -129,3 +129,12 @@ def test_reply_carries_the_providers_error_instead_of_swallowing_it():
     assert turn.bands is None
     assert "401" in turn.error
     assert turn.text == ""
+
+
+def test_a_bare_json_reply_still_becomes_a_proposal_in_words():
+    bare = ('{"bands": [{"name": "high", "min": 0.6, "action": "A"}, '
+            '{"name": "medium", "min": 0.4, "action": "B"}, '
+            '{"name": "low", "min": 0.0, "action": "C"}], "rationale": "Raise medium."}')
+    bands, why = rules_chat.extract_bands(bare, V1)
+    assert bands is not None and why == "Raise medium."
+    assert rules_chat.strip_block(bare) == ""
