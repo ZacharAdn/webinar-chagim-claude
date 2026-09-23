@@ -25,8 +25,10 @@ from __future__ import annotations
 
 import json
 import os
+import tomllib
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import rules_store
 from rules_store import Band, RuleSet, normalise
@@ -37,6 +39,40 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 MIN_VERDICTS_TO_ACT = 3       # fewer than this and a band is left alone
 WRONG_SHARE_TO_ACT = 0.5      # half the verdicts on a band say wrong -> act
 FLOOR_STEP = 0.05             # how much a floor moves when a band over-fires
+
+
+@dataclass(frozen=True)
+class Thresholds:
+    """The three numbers the learner acts on. Defaults above; ladder.toml's
+    [learner] table overrides them, because a number that decides when the
+    rules change belongs in the one configuration file, not in Python."""
+
+    min_verdicts: int = MIN_VERDICTS_TO_ACT
+    wrong_share: float = WRONG_SHARE_TO_ACT
+    floor_step: float = FLOOR_STEP
+
+    def rule_text(self) -> str:
+        """One sentence the screen shows next to the button, so the threshold
+        is never a surprise: it says what the learner will and will not do."""
+        return (
+            f"A band changes only once at least {self.min_verdicts} verdicts on it "
+            f"say 'wrong' (at least {self.wrong_share:.0%} of its verdicts). With a "
+            "better action named, the band's action becomes that; without one, a "
+            f"floor moves by {self.floor_step:.0%}."
+        )
+
+
+def thresholds(root: Path | None = None) -> Thresholds:
+    try:
+        with (Path(root or rules_store.REPO_ROOT) / "ladder.toml").open("rb") as fh:
+            raw = tomllib.load(fh).get("learner", {})
+    except Exception:  # noqa: BLE001 - no file, defaults
+        raw = {}
+    return Thresholds(
+        int(raw.get("min_verdicts", MIN_VERDICTS_TO_ACT)),
+        float(raw.get("wrong_share", WRONG_SHARE_TO_ACT)),
+        float(raw.get("floor_step", FLOOR_STEP)),
+    )
 
 
 @dataclass
@@ -126,13 +162,14 @@ def _diff(before: RuleSet, after: tuple[Band, ...]) -> list[str]:
 def propose_rules(rules: RuleSet, feedback: list[dict]) -> Proposal:
     """The deterministic learner. Reads the digest, moves what the evidence moves."""
     digested = digest(rules, feedback)
+    t = thresholds()
     floors = {b.name: b.min for b in rules.bands}
     actions = {b.name: b.action for b in rules.bands}
     notes: list[str] = []
     crossed = 0
     for position, band in enumerate(rules.bands):       # highest floor first
         d = digested[band.name]
-        if d.total < MIN_VERDICTS_TO_ACT or d.wrong_share < WRONG_SHARE_TO_ACT:
+        if d.total < t.min_verdicts or d.wrong_share < t.wrong_share:
             continue
         crossed += 1
         top = d.better.most_common(1)
@@ -143,7 +180,7 @@ def propose_rules(rules: RuleSet, feedback: list[dict]) -> Proposal:
                 f"{top[0][1]} of them suggested '{actions[band.name]}'."
             )
         elif band.min > 0 and d.stayed > d.left:
-            floors[band.name] = min(round(band.min + FLOOR_STEP, 4), 0.95)
+            floors[band.name] = min(round(band.min + t.floor_step, 4), 0.95)
             notes.append(
                 f"{band.name}: {d.stayed} of {d.total} customers stayed after a "
                 f"'{band.action}' call, so the floor rises to {floors[band.name]:.0%}."
@@ -152,7 +189,7 @@ def propose_rules(rules: RuleSet, feedback: list[dict]) -> Proposal:
             # The mirror rule: they left after the softer call, so the band
             # above has to start lower and catch the next ones.
             above = rules.bands[position - 1]
-            floors[above.name] = max(round(above.min - FLOOR_STEP, 4), band.min + FLOOR_STEP)
+            floors[above.name] = max(round(above.min - t.floor_step, 4), band.min + t.floor_step)
             notes.append(
                 f"{band.name}: {d.left} of {d.total} customers left after a "
                 f"'{band.action}' call, so '{above.name}' now starts at "
@@ -164,7 +201,7 @@ def propose_rules(rules: RuleSet, feedback: list[dict]) -> Proposal:
     total = sum(d.total for d in digested.values())
     rationale = " ".join(notes) if notes else (
         f"{total} verdicts read; no band crossed the threshold of "
-        f"{MIN_VERDICTS_TO_ACT} verdicts with half or more wrong."
+        f"{t.min_verdicts} verdicts with {t.wrong_share:.0%} or more wrong."
         if not crossed else
         f"{total} verdicts read; {crossed} band(s) crossed the threshold but the "
         "verdicts point nowhere: no better action, and stayed and left in balance."

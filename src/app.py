@@ -365,18 +365,26 @@ def scoring_form(df: pd.DataFrame, spec: model_mod.Spec) -> None:
         derived.append("total_charges")
 
     bands = agent_mod.Bands.load(conn=data_mod.get_connection())
-    left, right = st.columns(2)
-    probabilities: dict[str, float] = {}
-    for slot, estimator in ((left, "logreg"), (right, "tree")):
-        trained = get_model_for(df, spec, estimator)
-        probability = model_mod.score_record(trained, record)
-        probabilities[estimator] = probability
-        slot.metric(
-            model_mod.ESTIMATORS.get(estimator, estimator),
-            f"{probability:.1%}",
-            help=f"P({spec.positive_label}) for the record above",
+    probabilities: dict[str, float] = {
+        estimator: model_mod.score_record(get_model_for(df, spec, estimator), record)
+        for estimator in model_mod.ESTIMATORS
+    }
+    # One number decides. The other family is shown small, as a comparison,
+    # so nobody has to ask which of two big numbers the app acts on.
+    chosen = probabilities[spec.estimator]
+    st.metric(
+        f"P({spec.target} = {spec.positive_label}) -- "
+        f"{model_mod.ESTIMATORS.get(spec.estimator, spec.estimator)}",
+        f"{chosen:.1%}",
+    )
+    st.caption(
+        f"Rung 3 acts on this number: {bands.recommend({'probability': chosen}).action}. "
+        + " · ".join(
+            f"{model_mod.ESTIMATORS.get(e, e)} would say {p:.1%}"
+            for e, p in probabilities.items() if e != spec.estimator
         )
-        slot.caption(bands.recommend({"probability": probability}).action)
+        + " -- a different model, a different number; only the chosen one decides."
+    )
 
     typed = {column: record[column] for column in drivers + numbers}
     handoff.stash_scored(st.session_state, record, probabilities, typed)
@@ -624,11 +632,11 @@ def feedback_form(conn, record: dict, rules, rules_set, spec,
             "What actually happened", list(labels), horizontal=True,
             format_func=labels.get,
         )
-        with st.expander("I have a better action"):
-            better = st.text_input(
-                "A better action, in one line (leave empty if the call was right)"
-            )
-            note = st.text_input("Why? (optional)")
+        better = st.text_input(
+            "What should have been done instead? (one line; empty if the call was right)"
+        )
+        with st.expander("Why? (optional)"):
+            note = st.text_input("A sentence for the learner to read")
         sent = st.form_submit_button("Send feedback", type="primary")
     if sent:
         row = {
@@ -645,6 +653,8 @@ def feedback_form(conn, record: dict, rules, rules_set, spec,
         }
         ok, message = data_mod.write_feedback(conn, row)
         (st.success if ok else st.error)(message)
+        if ok:
+            _band_progress(conn, rules_set, row)
         if ok and logged:
             st.caption(
                 f"Attached to prediction #{logged['id']} from "
@@ -657,12 +667,39 @@ def feedback_form(conn, record: dict, rules, rules_set, spec,
         )
 
 
+def _band_progress(conn, rules_set, row: dict) -> None:
+    """After a send: how far this band is from the learner's threshold, and what
+    the verdicts so far would make it do. The '3' used to live only in Python."""
+    t = learner_mod.thresholds()
+    band = rules_set.band_for(float(row.get("probability") or 0.0)).name
+    digested = learner_mod.digest(rules_set, data_mod.read_feedback(conn))
+    d = digested.get(band)
+    if d is None:
+        return
+    if d.total < t.min_verdicts:
+        st.info(
+            f"Verdicts on the '{band}' band: {d.total} of {t.min_verdicts} the learner "
+            f"needs before it may change it ({d.wrong} say wrong)."
+        )
+    else:
+        st.info(
+            f"Verdicts on the '{band}' band: {d.total} ({d.wrong} say wrong) -- enough "
+            "for the learner. Rung 4: 'Let the learner revise the rules'."
+        )
+    if row.get("verdict") == "wrong" and not row.get("better_action"):
+        st.caption(
+            "No better action was named, so the learner cannot change what this band "
+            "recommends -- it can only move a floor. Say what should have been done."
+        )
+
+
 def learner_panel(conn, rules_set, feedback: list[dict]) -> None:
     """Agent 2: reads the verdicts, proposes a revision, publishes it on request."""
     if not feedback:
         st.caption("No verdicts yet. Send one on rung 3 and the learner has something to read.")
         return
 
+    st.caption(learner_mod.thresholds().rule_text())
     prefer_llm = learner_mod.llm_available()
     writer = ("the rule-based learner, with gpt-oss-120b as a second opinion when "
               "the rules find nothing") if prefer_llm else "the rule-based learner"
