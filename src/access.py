@@ -93,13 +93,24 @@ def is_editor() -> bool:
     expected = _expected_key()
     if not expected:
         return False
+    if st.session_state.get("_editor") == expected:
+        return True
     try:
         supplied = st.query_params.get(KEY_PARAM, "")
     except Exception:  # noqa: BLE001 - older Streamlit
         supplied = ""
     if isinstance(supplied, list):
         supplied = supplied[0] if supplied else ""
-    return hmac.compare_digest(str(supplied).strip(), expected)
+    if not hmac.compare_digest(str(supplied).strip(), expected):
+        return False
+    # Remember it for this session and take it out of the address bar: the
+    # browser is on a shared screen, and the key is what unlocks Publish.
+    st.session_state["_editor"] = expected
+    try:
+        del st.query_params[KEY_PARAM]
+    except Exception:  # noqa: BLE001
+        pass
+    return True
 
 
 def publish_token() -> str:

@@ -128,3 +128,12 @@ def test_derived_key_matches_what_supabase_setup_stores():
     ).stdout.strip()
     assert access.derive_key("demo", "sb_x") == shell
     assert shell == hashlib.sha256(b"demo|publish-gate|sb_x").hexdigest()[:16]
+
+
+def test_the_key_leaves_the_address_bar_and_stays_in_the_session(monkeypatch):
+    import streamlit as st
+    _set_key(monkeypatch, "secret-key")
+    _set_url_key("secret-key")
+    assert access.is_editor() is True
+    assert access.KEY_PARAM not in st.query_params
+    assert access.is_editor() is True        # a rerun without ?k= still publishes
